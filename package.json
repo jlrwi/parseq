@@ -1,0 +1,20 @@
+{
+  "name": "@jlrwi/parseq",
+  "version": "1.0.0",
+  "description": "Better living thru eventuality!",
+  "main": "parseq.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jlrwi/parseq.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jlrwi/parseq/issues"
+  },
+  "homepage": "https://github.com/jlrwi/parseq#readme",
+  "type": "module"
+}

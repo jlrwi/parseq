@@ -30,7 +30,7 @@ function make_reason(factory_name, excuse, evidence) {
 }
 
 function check_callback(callback, factory_name) {
-    if (typeof callback !== "function" || callback.length !== 1) {
+    if (typeof callback !== "function" || callback.length !== 2) {
         throw make_reason(factory_name, "Not a callback.", callback);
     }
 }
@@ -38,7 +38,7 @@ function check_callback(callback, factory_name) {
 function check_requestor_array(requestor_array, factory_name) {
 
 // A requestor array contains only requestors. A requestor is a function that
-// takes wun or two arguments: 'callback' and optionally 'initial_value'.
+// takes two arguments: 'callback' and 'initial_value'.
 
     if (
         !Array.isArray(requestor_array)
@@ -109,7 +109,7 @@ function run(
         }
     }
 
-    function start_requestor(value) {
+    function start_requestor(latest_value) {
 
 // The 'start_requestor' function is not recursive, exactly. It does not
 // directly call itself, but it does return a function that might call
@@ -133,7 +133,7 @@ function run(
             const requestor = requestor_array[number];
             try {
                 cancel_array[number] = requestor (
-                    function start_requestor_callback (result) {
+                    function start_requestor_callback (value, reason) {
 
 // This callback function is called by the 'requestor' when it is done.
 // If we are no longer running, then this call is ignored.
@@ -151,7 +151,7 @@ function run(
 
 // Call the 'action' function to let the requestor know what happened.
 
-                            action(result.value, result.reason, number);
+                            action(value, reason, number);
 
 // Clear 'number' so this callback can not be used again.
 
@@ -163,13 +163,13 @@ function run(
 
                             return start_requestor(
                                 factory_name === "sequence"
-                                ? result.value
+                                ? value
                                 : initial_value
                             );
                         }
                     }
                 ) (
-                    value
+                    latest_value
                 );
 
 // Requestors are required to report their failure thru the callback.
@@ -179,7 +179,7 @@ function run(
             } catch (exception) {
                 action(undefined, exception, number);
                 number = undefined;
-                start_requestor(value);
+                start_requestor(latest_value);
             }
         }
     }
@@ -336,11 +336,11 @@ function parallel (options = {}) {
                             )
                         ) {
                             cancel(make_reason(factory_name, "Optional."));
-                            callback ({value: (
+                            callback (
                                 factory_name === "sequence"
                                 ? results.pop()
                                 : results
-                            )});
+                            );
                             callback = undefined;
                         }
                     },
@@ -360,7 +360,7 @@ function parallel (options = {}) {
                             time_option = undefined;
                             if (number_of_pending_required < 1) {
                                 cancel(reason);
-                                callback ({value: results});
+                                callback (results);
                             }
                         } else {
 
@@ -369,9 +369,9 @@ function parallel (options = {}) {
 
                             cancel(reason);
                             if (number_of_pending_required < 1) {
-                                callback ({value: results});
+                                callback (results);
                             } else {
-                                callback ({reason});
+                                callback (undefined, reason);
                             }
                             callback = undefined;
                         }
@@ -493,15 +493,15 @@ function parallel_object (options = {}) {
 // We pass our callback to the parallel requestor,
 // converting its value into an object.
 
-                    function parallel_object_callback(result) {
-                        if (result.value === undefined) {
-                            return callback (result);
+                    function parallel_object_callback(value, reason) {
+                        if (value === undefined) {
+                            return callback (undefined, reason);
                         }
                         const object = Object.create(null);
                         names.forEach(function (name, index) {
-                            object[name] = result.value[index];
+                            object[name] = value[index];
                         });
-                        return callback (result);
+                        return callback (object);
                     }
                 ) (
                     initial_value
@@ -544,7 +544,7 @@ function race (options = {}) {
 
                         if (value !== undefined) {
                             cancel(make_reason(factory_name, "Loser.", number));
-                            callback ({value});
+                            callback (value);
                             callback = undefined;
                         }
 
@@ -552,7 +552,7 @@ function race (options = {}) {
 
                         if (number_of_pending < 1) {
                             cancel(reason);
-                            callback ({reason});
+                            callback (reason);
                             callback = undefined;
                         }
                     },
@@ -563,7 +563,7 @@ function race (options = {}) {
                             time_limit
                         );
                         cancel(reason);
-                        callback ({reason});
+                        callback (reason);
                         callback = undefined;
                     },
                     time_limit,
