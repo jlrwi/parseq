@@ -319,7 +319,7 @@ function parallel (options = {}) {
                             number_of_pending_required -= 1;
                             if (value === undefined) {
                                 cancel(reason);
-                                callback ({reason});
+                                callback (undefined, reason);
                                 callback = undefined;
                                 return;
                             }
