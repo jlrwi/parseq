@@ -10,9 +10,10 @@
 /*jslint node */
 
 /*property
-    concat, create, evidence, factory_name, fallback, forEach, freeze, isArray,
-    isSafeInteger, keys, length, min, parallel, parallel_object, pop, push,
-    race, reason, sequence, some, throttle, time_limit, time_option, value
+    concat, create, applied_fallback, applied_parallel, applied_race, evidence,
+    factory_name, fallback, fill, forEach, freeze, isArray, isSafeInteger, keys,
+    length, min, parallel, parallel_object, pop, push, race, reason, sequence,
+    some, throttle, time_limit, time_option, value
 */
 
 function make_reason(factory_name, excuse, evidence) {
@@ -65,7 +66,8 @@ function run(
     action,
     timeout,
     time_limit,
-    throttle = 0
+    throttle = 0,
+    applied = false
 ) {
 
 // The 'run' function does the work that is common to all of the Parseq
@@ -169,7 +171,9 @@ function run(
                         }
                     }
                 ) (
-                    latest_value
+                    (applied)
+                    ? latest_value[number]
+                    : latest_value
                 );
 
 // Requestors are required to report their failure thru the callback.
@@ -385,6 +389,92 @@ function parallel (options = {}) {
     };
 }
 
+function applied_parallel (options = {}) {
+    return function (apply_requestor) {
+
+        let {
+            time_limit,
+            throttle,
+            factory_name = "applied parallel"
+        } = options;
+
+// The applied_parallel factory takes a single requestor and returns a
+// requestor that produces an array of values by sending each element of
+// the supplied array to the provided requestor
+
+// We check the array and return the requestor.
+        check_requestor_array([apply_requestor], factory_name);
+        return function applied_parallel_requestor(callback) {
+            return function (initial_value) {
+                check_callback(callback, factory_name);
+
+                if (!Array.isArray(initial_value)) {
+                    throw make_reason(
+                        factory_name,
+                        "Not an array.",
+                        initial_value
+                    );
+                }
+
+                const requestor_array = new Array(initial_value.length);
+                requestor_array.fill(apply_requestor);
+
+                let number_of_pending = initial_value.length;
+                let results = [];
+
+// 'run' gets it started.
+
+                let cancel = run(
+                    factory_name,
+                    requestor_array,
+                    initial_value,
+                    function parallel_action(value, reason, number) {
+
+// The action function gets the result of each requestor in the array.
+// 'applied_parallel' wants to return an array of all of the values it sees.
+
+                        results[number] = value;
+                        number_of_pending -= 1;
+
+// If a requestor failed, then the parallel operation fails.
+
+                        if (value === undefined) {
+                            cancel(reason);
+                            callback(undefined, reason);
+                            callback = undefined;
+                            return;
+                        }
+
+// If all have been processed, then we are done.
+
+                        if (number_of_pending < 1) {
+                            callback(results);
+                            callback = undefined;
+                        }
+                    },
+                    function parallel_timeout() {
+
+// Time has expired.
+                        const reason = make_reason(
+                            factory_name,
+                            "Timeout.",
+                            time_limit
+                        );
+
+                        cancel(reason);
+                        callback (undefined, reason);
+                        callback = undefined;
+                    },
+                    time_limit,
+                    throttle,
+                    true
+                );
+                return cancel;
+            };
+        };
+    };
+}
+
 function parallel_object (options = {}) {
     return function (required_object, optional_object) {
 
@@ -575,6 +665,84 @@ function race (options = {}) {
     };
 }
 
+function applied_race (options = {}) {
+    return function (apply_requestor) {
+
+        const {
+            time_limit,
+            throttle
+        } = options;
+
+// The 'applied race' factory returns a requestor that sends all of the values
+// from a supplied array to 'apply_requestor' all at wunce.
+// The first success wins.
+
+        const factory_name = (
+            throttle === 1
+            ? "fallback"
+            : "race"
+        );
+
+        check_requestor_array([apply_requestor], factory_name);
+        return function race_requestor (callback) {
+            return function (initial_value) {
+                check_callback(callback, factory_name);
+
+                if (!Array.isArray(initial_value)) {
+                    throw make_reason(
+                        factory_name,
+                        "Not an array.",
+                        initial_value
+                    );
+                }
+
+                const requestor_array = new Array(initial_value.length);
+                requestor_array.fill(apply_requestor);
+
+                let number_of_pending = requestor_array.length;
+                let cancel = run(
+                    factory_name,
+                    requestor_array,
+                    initial_value,
+                    function race_action(value, reason, number) {
+                        number_of_pending -= 1;
+
+// We have a winner. Cancel the losers and pass the value to the 'callback'.
+
+                        if (value !== undefined) {
+                            cancel(make_reason(factory_name, "Loser.", number));
+                            callback (value);
+                            callback = undefined;
+                        }
+
+// There was no winner. Signal a failure.
+
+                        if (number_of_pending < 1) {
+                            cancel(reason);
+                            callback (reason);
+                            callback = undefined;
+                        }
+                    },
+                    function race_timeout() {
+                        let reason = make_reason(
+                            factory_name,
+                            "Timeout.",
+                            time_limit
+                        );
+                        cancel(reason);
+                        callback (reason);
+                        callback = undefined;
+                    },
+                    time_limit,
+                    throttle,
+                    true
+                );
+                return cancel;
+            };
+        };
+    };
+}
+
 function fallback (options = {}) {
     return function (requestor_array) {
 
@@ -588,6 +756,24 @@ function fallback (options = {}) {
             throttle: 1
         }) (
             requestor_array
+        );
+    };
+}
+
+function applied_fallback (options = {}) {
+    return function (apply_requestor) {
+
+        const {time_limit} = options;
+
+// The 'applied fallback' factory returns a requestor that tries
+// 'apply_requstor' with each value in a supplied array, wun at a time,
+// until it succeeds.
+
+        return applied_race ({
+            time_limit,
+            throttle: 1
+        }) (
+            apply_requestor
         );
     };
 }
@@ -615,5 +801,8 @@ export default Object.freeze({
     parallel,
     parallel_object,
     race,
-    sequence
+    sequence,
+    applied_fallback,
+    applied_parallel,
+    applied_race
 });
