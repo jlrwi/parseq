@@ -13,8 +13,23 @@
     concat, create, applied_fallback, applied_parallel, applied_race, evidence,
     factory_name, fallback, fill, forEach, freeze, isArray, isSafeInteger, keys,
     length, min, parallel, parallel_object, pop, push, race, reason, sequence,
-    some, throttle, time_limit, time_option, value
+    some, throttle, time_limit, time_option, value, applied_parallel_object,
+    values
 */
+
+function array_zip (key_list) {
+    return function (value_list) {
+        let res = Object.create(null);
+
+        Object.keys(key_list).forEach(
+            function (key, index) {
+                res[key] = value_list[index];
+            }
+        );
+
+        return res;
+    };
+}
 
 function make_reason(factory_name, excuse, evidence) {
 
@@ -475,6 +490,97 @@ function applied_parallel (options = {}) {
     };
 }
 
+function applied_parallel_object (options = {}) {
+    return function (apply_requestor) {
+
+        let {
+            time_limit,
+            throttle,
+            factory_name = "applied parallel object"
+        } = options;
+
+// The applied_parallel_object factory takes a single requestor and returns a
+// requestor that produces an object dictionary of values by sending each
+// property of the supplied object to the provided requestor
+
+// We check the array and return the requestor.
+        check_requestor_array([apply_requestor], factory_name);
+        return function applied_parallel_object_requestor(callback) {
+            return function (initial_value) {
+                check_callback(callback, factory_name);
+
+                if (typeof initial_value !== "object" ||
+                    !Array.isArray(initial_value)) {
+                    throw make_reason(
+                        factory_name,
+                        "Not an object.",
+                        initial_value
+                    );
+                }
+
+                const requestor_array = new Array(
+                    Object.keys(initial_value).length
+                );
+                requestor_array.fill(apply_requestor);
+
+                let number_of_pending = Object.keys(initial_value).length;
+                let results = [];
+
+// 'run' gets it started.
+
+                let cancel = run(
+                    factory_name,
+                    requestor_array,
+                    Object.values(initial_value),
+                    function parallel_action(value, reason, number) {
+
+// The action function gets the result of each requestor in the array.
+// 'applied_parallel' wants to return an array of all of the values it sees.
+
+                        results[number] = value;
+                        number_of_pending -= 1;
+
+// If a requestor failed, then the parallel operation fails.
+
+                        if (value === undefined) {
+                            cancel(reason);
+                            callback(undefined, reason);
+                            callback = undefined;
+                            return;
+                        }
+
+// If all have been processed, then we are done.
+
+                        if (number_of_pending < 1) {
+                            callback (
+                                array_zip (Object.keys(initial_value)) (results)
+                            );
+                            callback = undefined;
+                        }
+                    },
+                    function parallel_timeout() {
+
+// Time has expired.
+                        const reason = make_reason(
+                            factory_name,
+                            "Timeout.",
+                            time_limit
+                        );
+
+                        cancel(reason);
+                        callback (undefined, reason);
+                        callback = undefined;
+                    },
+                    time_limit,
+                    throttle,
+                    true
+                );
+                return cancel;
+            };
+        };
+    };
+}
+
 function parallel_object (options = {}) {
     return function (required_object, optional_object) {
 
@@ -804,5 +910,6 @@ export default Object.freeze({
     sequence,
     applied_fallback,
     applied_parallel,
+    applied_parallel_object,
     applied_race
 });
