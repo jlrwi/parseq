@@ -14,41 +14,36 @@ Parseq is in the Public Domain.
 
 A factory function is any function that returns a requestor function. Parseq provides these factory functions:
 
-    parseq.fallback ({
+    parseq.fallback(
+        requestor_array,
         time_limit
-    }) (
-        requestor_array
     )
 
-    parseq.parallel ({
-        time_limit,
-        time_option,
-        throttle
-    }) (
+    parseq.parallel(
         required_array,
-        optional_array
-    )
-
-    parseq.parallel_object ({
+        optional_array,
         time_limit,
         time_option,
         throttle
-    }) (
-        required_object,
-        optional_object
-    )
-    
-    parseq.race ({
-        time_limit,
-        throttle
-    }) (
-        requestor_array
     )
 
-    parseq.sequence({
+    parseq.parallel_object(
+        required_object,
+        optional_object,
+        time_limit,
+        time_option,
+        throttle
+    )
+
+    parseq.race(
+        requestor_array,
+        time_limit,
+        throttle
+    )
+
+    parseq.sequence(
+        requestor_array,
         time_limit
-    }) (
-        requestor_array
     )
 
 Each of these factories (except for `parallel_object`) takes an array of requestor functions. The `parallel` factory can take two arrays of requestor functions.
@@ -57,9 +52,9 @@ Each of these factory functions returns a requestor function. A factory function
 
 ### Requestor
 
-A requestor function is any curried function that takes a callback, then a value.
+A requestor function is any function that takes a callback and a value.
 
-    my_little_requestor (callback) (value)
+    my_little_requestor(callback, value)
 
 A requestor will do some work or send a message to another process or system. When the work is done, the requestor signals the result by passing a value to its callback. The callback could be called in a future turn, so the requestor does not need to block, nor should it ever block.
 
@@ -71,11 +66,11 @@ A requestor should not throw an exception. It should communicate all failures th
 
 ### Callback
 
-A callback function takes an object with two properties: `value` and `reason`.
+A callback function takes two arguments: `value` and `reason`.
 
     my_little_callback(value, reason)
 
-If `value` is missing or `undefined`, then failure is being signalled. `reason` may contain information explaining the failure. If `value` is not `undefined`, then success is being signalled and `value` contains the result.
+If `value` is `undefined`, then failure is being signalled. `reason` may contain information explaining the failure. If `value` is not `undefined`, then success is being signalled and `value` contains the result.
 
 ### Cancel
 
@@ -94,10 +89,9 @@ Three of the factories (`parallel`, `parallel_object`, and `race`) can take a `t
 
 ## Fallback
 
-    parseq.fallback ({
+    parseq.fallback(
+        requestor_array,
         time_limit
-    }) (
-        requestor_array
     )
 
 `parseq.fallback` returns a requestor function. When the requestor is called, it will call the first requestor in `requestor_array`. If that is ultimately successful, its value will be passed to the callback. But if that requestor fails, the next requestor will be called, and so on. If none of the requestors is successful, then the fallback fails. If any succeeds, then the fallback succeeds.
@@ -108,13 +102,12 @@ The fallback requestor will return a cancel function that can be called when the
 
 ## Parallel
 
-    parseq.parallel ({
+    parseq.parallel(
+        required_array,
+        optional_array,
         time_limit,
         time_option,
         throttle
-    }) (
-        required_array,
-        optional_array
     )
 
 `parseq.parallel` returns a requestor that processes many requestors in parallel, producing an array of all of the successful results. It does not add parallelism to JavaScript. It makes it possible for JavaScript to exploit the natural parallelism of the universe.
@@ -139,24 +132,22 @@ If `throttle` is not `undefined` or `0`, then there will be a limit on the numbe
 
 ## Parallel Object
 
-    parseq.parallel_object ({
+    parseq.parallel_object(
+        required_object,
+        optional_object,
         time_limit,
         time_option,
         throttle
-    }) (
-        required_object,
-        optional_object
     )
 
 `parseq.parallel_object` is like `parseq.parallel` except that it operates on objects of requestors instead of on arrays of requestors. If successful, it will deliver an object of results. A key from an object of requestors will be used as the key for the requestor's result.
 
 ## Race
 
-    parseq.race ({
+    parseq.race(
+        requestor_array,
         time_limit,
         throttle
-    }) (
-        requestor_array
     )
 
 `parseq.race` returns a requestor that starts all of the requestors in `requestor_array` in parallel. Its result is the result of the first of those requestors to successfully finish. All of the other requestors will be cancelled. If all of those requestors fail, then the race fails.
@@ -167,10 +158,9 @@ If `throttle` is not `undefined` or `0`, then there will be a limit on the numbe
 
 ## Sequence
 
-    parseq.sequence({
+    parseq.sequence(
+        requestor_array,
         time_limit
-    }) (
-        requestor_array
     )
 
 `parseq.sequence` returns a requestor that processes each requestor in `requestor_array` one at a time. Each of those requestors will be passed the result of the previous requestor as its `value` argument. If all succeed, then the sequence succeeds, giving the result of the last of the requestors. If any fail, then the sequence fails.
