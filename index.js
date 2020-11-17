@@ -103,7 +103,7 @@ const race = function (options = {}) {
             throttle
         } = options;
 
-        return function parallel_requestor (callback) {
+        return function race_requestor (callback) {
             return function (initial_value) {
                 parseq.race(
                     uncurry_requestors (requestor_array),
@@ -124,7 +124,7 @@ const fallback = function (options = {}) {
 
         const {time_limit} = options;
 
-        return function parallel_requestor (callback) {
+        return function fallback_requestor (callback) {
             return function (initial_value) {
                 parseq.fallback(
                     uncurry_requestors (requestor_array),
@@ -144,7 +144,7 @@ const sequence = function (options = {}) {
 
         const {time_limit} = options;
 
-        return function parallel_requestor (callback) {
+        return function sequence_requestor (callback) {
             return function (initial_value) {
                 parseq.sequence(
                     uncurry_requestors (requestor_array),
