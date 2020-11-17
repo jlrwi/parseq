@@ -1,20 +1,41 @@
+/*jslint
+    fudge, node
+*/
+
 import parseq from "./parseq.js";
-import requestor_type from "@jlrwi/requestor_type";
 import {
     is_object,
     array_map
 } from "@jlrwi/esfunctions";
 import {
     object_dictionary_type
-} from "@jlri/es-static-types";
+} from "@jlrwi/es-static-types";
 
 /*
 Parseq wrapper to curry the requestors
 Also adds applied versions of parseq requestors
 */
 
-const requestor = requestor_type ();
-const obj_of_requestor = object_dictionary_type (requestor);
+const dictionary = object_dictionary_type ();
+
+const uncurried_requestor = function (requestor) {
+    return function uncurried_requestor (callback, initial_value) {
+        requestor (callback) (initial_value);
+    };
+};
+
+const uncurry_requestors = function (requestor_list) {
+
+    if (Array.isArray(requestor_list)) {
+        return array_map (uncurried_requestor) (requestor_list);
+    }
+
+    if (is_object (requestor_list)) {
+        return dictionary.map (uncurried_requestor) (requestor_list);
+    }
+
+    return requestor_list;
+};
 
 const parallel = function (options = {}) {
     return function (required_array, optional_array) {
@@ -29,13 +50,17 @@ const parallel = function (options = {}) {
             throttle
         } = options;
 
-        return parseq.parallel(
-            required_array,
-            optional_array,
-            time_limit,
-            time_option,
-            throttle
-        );
+        return function parallel_requestor (callback) {
+            return function (initial_value) {
+                parseq.parallel(
+                    uncurry_requestors (required_array),
+                    uncurry_requestors (optional_array),
+                    time_limit,
+                    time_option,
+                    throttle
+                ) (callback, initial_value);
+            };
+        };
     };
 };
 
@@ -52,13 +77,17 @@ const parallel_object = function (options = {}) {
             throttle
         } = options;
 
-        return parseq.parallel_object(
-            required_object,
-            optional_object,
-            time_limit,
-            time_option,
-            throttle
-        );
+        return function parallel_object_requestor (callback) {
+            return function (initial_value) {
+                parseq.parallel_object(
+                    uncurry_requestors (required_object),
+                    uncurry_requestors (optional_object),
+                    time_limit,
+                    time_option,
+                    throttle
+                ) (callback, initial_value);
+            };
+        };
     };
 };
 
@@ -74,7 +103,15 @@ const race = function (options = {}) {
             throttle
         } = options;
 
-        return parseq.race(requestor_array, time_limit, throttle);
+        return function parallel_requestor (callback) {
+            return function (initial_value) {
+                parseq.race(
+                    uncurry_requestors (requestor_array),
+                    time_limit,
+                    throttle
+                ) (callback, initial_value);
+            };
+        };
     };
 };
 
@@ -87,7 +124,14 @@ const fallback = function (options = {}) {
 
         const {time_limit} = options;
 
-        return parseq.race(requestor_array, time_limit, 1);
+        return function parallel_requestor (callback) {
+            return function (initial_value) {
+                parseq.fallback(
+                    uncurry_requestors (requestor_array),
+                    time_limit
+                ) (callback, initial_value);
+            };
+        };
     };
 };
 
@@ -100,14 +144,14 @@ const sequence = function (options = {}) {
 
         const {time_limit} = options;
 
-        return parseq.parallel(
-            requestor_array,
-            undefined,
-            time_limit,
-            undefined,
-            1,
-            "sequence"
-        );
+        return function parallel_requestor (callback) {
+            return function (initial_value) {
+                parseq.sequence(
+                    uncurry_requestors (requestor_array),
+                    time_limit
+                ) (callback, initial_value);
+            };
+        };
     };
 };
 
@@ -121,13 +165,13 @@ const preloaded_requestor = function (requestor) {
     };
 };
 
-
 // <a -> b> -> [a] -> [<a -> b>] -> [b]
 const applied_requestor = function (processor) {
     return function (options = {}) {
         return function (requestor) {
-            return function (final_callback) {
+            return function applied_requestor (final_callback) {
                 return function (input_list) {
+
                     if (!Array.isArray (input_list)) {
                         throw "Input is not an array";
                     }
@@ -153,13 +197,13 @@ const applied_sequence = applied_requestor (sequence);
 // <a -> b> -> {a} -> [<a -> b>] -> {b}
 const applied_parallel_object = function (options = {}) {
     return function (requestor) {
-        return function (final_callback) {
+        return function applied_requestor (final_callback) {
             return function (input_object) {
                 if (!is_object (input_object)) {
                     throw "Invalid options object";
                 }
 
-                const requestor_obj = obj_of_requestor.map (
+                const requestor_obj = dictionary.map (
                     preloaded_requestor (requestor)
                 ) (
                     input_object
