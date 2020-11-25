@@ -8,45 +8,84 @@ You should structure your application as a set of requestor functions that each 
 
 Parseq is in the Public Domain.
 
-[parseq.js](https://github.com/douglascrockford/parseq/blob/master/parseq.js) is a module that exports a parseq object that contains five factory functions.
+[Parseq](https://github.com/jlrwi/parseq/) is a module that exports a parseq object that contains nine factory functions.
+
+This modified version of Parseq differs from the original in these respects:
+* Calls to the factory functions are curried
+* Requestors are curried in the form: `my_requestor(callback)(value)`
+* Four new "applied" versions of the factories are added
 
 ### Factory
 
 A factory function is any function that returns a requestor function. Parseq provides these factory functions:
 
-    parseq.fallback(
-        requestor_array,
+    parseq.fallback({
         time_limit
+    })(
+        requestor_array
     )
 
-    parseq.parallel(
+    parseq.parallel({
+        time_limit,
+        time_option,
+        throttle
+    })(
         required_array,
-        optional_array,
+        optional_array
+    )
+
+    parseq.parallel_object({
         time_limit,
         time_option,
         throttle
-    )
-
-    parseq.parallel_object(
+    })(
         required_object,
-        optional_object,
+        optional_object
+    )
+
+    parseq.race({
+        time_limit,
+        throttle
+    })(
+        requestor_array,
+    )
+
+    parseq.sequence({
+        time_limit
+    })(
+        requestor_array
+    )
+
+    parseq.applied_fallback({
+        time_limit
+    })(
+        requestor
+    )
+
+    parseq.applied_parallel({
         time_limit,
         time_option,
         throttle
+    })(
+        requestor
     )
 
-    parseq.race(
-        requestor_array,
+    parseq.applied_parallel_object({
+        time_limit,
+        time_option,
+        throttle
+    })(
+        requestor
+    )
+
+    parseq.applied_race({
         time_limit,
         throttle
+    })(
+        requestor
     )
 
-    parseq.sequence(
-        requestor_array,
-        time_limit
-    )
-
-Each of these factories (except for `parallel_object`) takes an array of requestor functions. The `parallel` factory can take two arrays of requestor functions.
+Each of these factories (except for `parallel_object` and the applied versions) takes an array of requestor functions. The `parallel` factory can take two arrays of requestor functions.
 
 Each of these factory functions returns a requestor function. A factory function may throw an exception if it finds problems in its parameters.
 
@@ -54,7 +93,7 @@ Each of these factory functions returns a requestor function. A factory function
 
 A requestor function is any function that takes a callback and a value.
 
-    my_little_requestor(callback, value)
+    my_little_requestor(callback)(value)
 
 A requestor will do some work or send a message to another process or system. When the work is done, the requestor signals the result by passing a value to its callback. The callback could be called in a future turn, so the requestor does not need to block, nor should it ever block.
 
@@ -84,14 +123,15 @@ A cancel function attempts to stop the operation of the requestor. If a program 
 
 All of the factories can take a `time_limit` expressed in milliseconds. The requestor that the factory returns will fail if it can not finish its work in the specified time. If `time_limit` is `0` or `undefined`, then there will be no time limit.
 
-Three of the factories (`parallel`, `parallel_object`, and `race`) can take a `throttle` argument. Normally these factories want to start all of their requestors at once. Unfortunately, that can cause some incompetent systems to fail due to resource exhaustion or other limitations. The `throttle` puts an upper limit on the number of requestors that can be running at once. Please be aware that some of your requestors might not start running until others have finished. You need to factor that delay into your time limits.
+Six of the factories (`parallel`, `parallel_object`, `race`, and their applied versions) can take a `throttle` argument. Normally these factories want to start all of their requestors at once. Unfortunately, that can cause some incompetent systems to fail due to resource exhaustion or other limitations. The `throttle` puts an upper limit on the number of requestors that can be running at once. Please be aware that some of your requestors might not start running until others have finished. You need to factor that delay into your time limits.
 
 
 ## Fallback
 
-    parseq.fallback(
-        requestor_array,
+    parseq.fallback({
         time_limit
+    })(
+        requestor_array
     )
 
 `parseq.fallback` returns a requestor function. When the requestor is called, it will call the first requestor in `requestor_array`. If that is ultimately successful, its value will be passed to the callback. But if that requestor fails, the next requestor will be called, and so on. If none of the requestors is successful, then the fallback fails. If any succeeds, then the fallback succeeds.
@@ -102,12 +142,13 @@ The fallback requestor will return a cancel function that can be called when the
 
 ## Parallel
 
-    parseq.parallel(
-        required_array,
-        optional_array,
+    parseq.parallel({
         time_limit,
         time_option,
         throttle
+    })(
+        required_array,
+        optional_array
     )
 
 `parseq.parallel` returns a requestor that processes many requestors in parallel, producing an array of all of the successful results. It does not add parallelism to JavaScript. It makes it possible for JavaScript to exploit the natural parallelism of the universe.
@@ -132,22 +173,24 @@ If `throttle` is not `undefined` or `0`, then there will be a limit on the numbe
 
 ## Parallel Object
 
-    parseq.parallel_object(
-        required_object,
-        optional_object,
+    parseq.parallel_object({
         time_limit,
         time_option,
         throttle
+    })(
+        required_object,
+        optional_object
     )
 
 `parseq.parallel_object` is like `parseq.parallel` except that it operates on objects of requestors instead of on arrays of requestors. If successful, it will deliver an object of results. A key from an object of requestors will be used as the key for the requestor's result.
 
 ## Race
 
-    parseq.race(
-        requestor_array,
+    parseq.race({
         time_limit,
         throttle
+    })(
+        requestor_array
     )
 
 `parseq.race` returns a requestor that starts all of the requestors in `requestor_array` in parallel. Its result is the result of the first of those requestors to successfully finish. All of the other requestors will be cancelled. If all of those requestors fail, then the race fails.
@@ -158,14 +201,73 @@ If `throttle` is not `undefined` or `0`, then there will be a limit on the numbe
 
 ## Sequence
 
-    parseq.sequence(
-        requestor_array,
+    parseq.sequence({
         time_limit
+    })(
+        requestor_array
     )
 
 `parseq.sequence` returns a requestor that processes each requestor in `requestor_array` one at a time. Each of those requestors will be passed the result of the previous requestor as its `value` argument. If all succeed, then the sequence succeeds, giving the result of the last of the requestors. If any fail, then the sequence fails.
 
 If the optional `time_limit` argument is supplied, then if all of the requestors have not all completed in the allotted time, then the sequence fails and the pending requestor is cancelled.
+
+## Applied Fallback
+
+    parseq.applied_fallback({
+        time_limit
+    })(
+        requestor
+    )
+
+`parseq.applied_fallback` returns a requestor function. When the requestor is called with an array of values, it will call `requestor` with the first value in the array. If that is ultimately successful, its value will be passed to the callback. But if that requestor fails, the next value in the array will be passed to `requestor`, and so on. If none of the requestors is successful, then the fallback fails. If any succeeds, then the fallback succeeds.
+
+If `time_limit` is `0` or `undefined`, then there is no time limit. If `time_limit` is greater than `0`, then a time limit is imposed. The fallback requestor will fail if it can not finish in time.
+
+The applied fallback requestor will return a cancel function that can be called when the result is no longer needed.
+
+## Applied Parallel
+
+    parseq.applied_parallel({
+        time_limit,
+        throttle
+    }) (
+        requestor
+    )
+
+`parseq.applied_parallel` takes a single requestor, but when called with an array of values each value will be passed to the requestor in parallel. The parallel operation only succeeds if all of the resulting requestors succeed.
+
+If the `time_limit` argument is supplied, then a time limit is imposed. The result must be complete before the time expires.
+
+If there is no time limit, and if there are required requestors, then the parallel operation is finished when all of the required requestors are done. All unfinished optional requestors will be cancelled.
+
+If `throttle` is not `undefined` or `0`, then there will be a limit on the number of requestors that will be active at a time.
+
+## Applied Parallel Object
+
+    parseq.applied_parallel_object({
+        time_limit,
+        time_option,
+        throttle
+    })(
+        requestor
+    )
+
+`parseq.applied_parallel_object` is like `parseq.applied_parallel` except that it takes an object of values instead of an array of values. If successful, it will deliver an object of results. A key from the object of values will be used as the key for the requestor's result.
+
+## Applied Race
+
+    parseq.applied_race({
+        time_limit,
+        throttle
+    })(
+        requestor
+    )
+
+`parseq.applied_race`, when called with an array of values, returns a requestor that sends all of those values to `requestor` in parallel. Its result is the result of the first of those requestors to successfully finish. All of the other requestors will be cancelled. If all of those requestors fail, then the race fails.
+
+If the `time_limit` argument is supplied, then if no requestor has been successful in the allotted time, then the race fails, and all pending requestors are cancelled.
+
+If `throttle` is not `undefined` or `0`, then there will be a limit on the number of requestors that will be active at a time.
 
 ## Demo
 
